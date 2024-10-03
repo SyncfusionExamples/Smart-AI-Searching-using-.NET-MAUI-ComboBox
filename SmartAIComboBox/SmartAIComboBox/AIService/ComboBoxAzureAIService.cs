@@ -29,7 +29,7 @@ namespace SmartAIComboBox.SmartAIComboBox
         private IChatCompletionService? _chatCompletion;
 
         /// <summary>
-        /// The kernal
+        /// The kernel
         /// </summary>
         private Kernel? _kernel;
 
@@ -63,12 +63,12 @@ namespace SmartAIComboBox.SmartAIComboBox
         {
             #region Azure OpenAI
             // Use below method for Azure Open AI
-            this.GetAzureOpenAIKernal();
+            this.GetAzureOpenAIKernel();
             #endregion
 
             #region Google Gemini
             // Use below method for Google Gemini
-            //this.GetGoogleGeminiAIKernal();
+            //this.GetGoogleGeminiAIKernel();
             #endregion
 
             bool isValidUri = Uri.TryCreate(endpoint, UriKind.Absolute, out _uriResult)
@@ -83,7 +83,7 @@ namespace SmartAIComboBox.SmartAIComboBox
             {
                 if (_chatHistory != null && _chatCompletion != null)
                 {
-                    // test the semantic kernal with message.
+                    // test the semantic kernel with message.
                     _chatHistory.AddSystemMessage("Hello, Test Check");
                     await _chatCompletion.GetChatMessageContentAsync(chatHistory: _chatHistory, kernel: _kernel);
                 }
@@ -99,9 +99,9 @@ namespace SmartAIComboBox.SmartAIComboBox
 
         #region Azure OpenAI
         /// <summary>
-        /// To get the Azure open ai kernal method
+        /// To get the Azure open ai kernel method
         /// </summary>
-        private void GetAzureOpenAIKernal()
+        private void GetAzureOpenAIKernel()
         {
             // Create the chat history
             _chatHistory = new ChatHistory();
@@ -109,10 +109,10 @@ namespace SmartAIComboBox.SmartAIComboBox
             {
                 var builder = Kernel.CreateBuilder().AddAzureOpenAIChatCompletion(deploymentName, endpoint, key);
 
-                // Get the kernal from build
+                // Get the kernel from build
                 _kernel = builder.Build();
 
-                //Get the chat completions from kernal
+                //Get the chat completions from kernel
                 _chatCompletion = _kernel.GetRequiredService<IChatCompletionService>();
             }
             catch (Exception)
@@ -126,7 +126,7 @@ namespace SmartAIComboBox.SmartAIComboBox
         /// <summary>
         /// To get the google Gemini ai kermal
         /// </summary>
-        private void GetGoogleGeminiAIKernal()
+        private void GetGoogleGeminiAIKernel()
         {
             //            //First Add the below package to the application
             //            add package Microsoft.SemanticKernel.Connectors.Google
@@ -138,7 +138,7 @@ namespace SmartAIComboBox.SmartAIComboBox
             //            _kernelBuilder.AddGoogleAIGeminiChatCompletion(modelId: "NAME_OF_MODEL", apiKey: key);
             //            Kernel _kernel = _kernelBuilder.Build();
 
-            //            //Get the chat completions from kernal
+            //            //Get the chat completions from kernel
             //            _chatCompletion = _kernel.GetRequiredService<IChatCompletionService>();
         }
         #endregion
