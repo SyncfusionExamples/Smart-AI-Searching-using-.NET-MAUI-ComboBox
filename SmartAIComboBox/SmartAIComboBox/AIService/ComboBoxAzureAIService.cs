@@ -1,8 +1,6 @@
 ﻿using Azure.AI.OpenAI;
 using Azure;
 using System.Diagnostics;
-using Microsoft.SemanticKernel.ChatCompletion;
-using Microsoft.SemanticKernel;
 
 namespace SmartAIComboBox.SmartAIComboBox
 {
@@ -24,55 +22,53 @@ namespace SmartAIComboBox.SmartAIComboBox
         private const string key = "";
 
         /// <summary>
-        /// The chat completion service
+        /// The AzureOpenAI client
         /// </summary>
-        private IChatCompletionService? _chatCompletion;
+        private OpenAIClient? client;
 
         /// <summary>
-        /// The kernel
+        /// The ChatCompletion option
         /// </summary>
-        private Kernel? _kernel;
+        private ChatCompletionsOptions? chatCompletions;
+
+        private bool isCredentialValid = false;
+
+        private Uri? uriResult;
+
+        #region Properties
 
         /// <summary>
-        /// The chat histroy
+        /// Gets or Set a value indicating whether an credentials are valid or not.
+        /// Returns <c>true</c> if the credentials are valid; otherwise, <c>false</c>.
         /// </summary>
-        private ChatHistory? _chatHistory;
-
-        /// <summary>
-        /// The credential valid field
-        /// </summary>
-        internal bool IsCredentialValid = false;
-
-        /// <summary>
-        /// The uri result field
-        /// </summary>
-        private Uri? _uriResult;
-
+        public bool IsCredentialValid
+        {
+            get
+            {
+                return isCredentialValid;
+            }
+            set
+            {
+                isCredentialValid = value;
+            }
+        }
+        #endregion
 
         public ComboBoxAzureAIService()
         {
             ValidateCredential();
+            InitializeChatCompletions();
         }
 
-        #region Private Methods
-
-        /// <summary>
-        /// Validate Azure Credentials
-        /// </summary>
-        private async void ValidateCredential()
+        private void ValidateCredential()
         {
-            #region Azure OpenAI
-            // Use below method for Azure Open AI
-            this.GetAzureOpenAIKernel();
-            #endregion
+            if (client == null && IsCredentialValid)
+            {
+                client = new OpenAIClient(new Uri(endpoint), new AzureKeyCredential(key));
+            }
 
-            #region Google Gemini
-            // Use below method for Google Gemini
-            //this.GetGoogleGeminiAIKernel();
-            #endregion
-
-            bool isValidUri = Uri.TryCreate(endpoint, UriKind.Absolute, out _uriResult)
-                 && (_uriResult.Scheme == Uri.UriSchemeHttp || _uriResult.Scheme == Uri.UriSchemeHttps);
+            bool isValidUri = Uri.TryCreate(endpoint, UriKind.Absolute, out uriResult)
+                 && (uriResult.Scheme == Uri.UriSchemeHttp || uriResult.Scheme == Uri.UriSchemeHttps);
 
             if (!isValidUri || !endpoint.Contains("http") || string.IsNullOrEmpty(key) || key.Contains("API key") || string.IsNullOrEmpty(deploymentName) || deploymentName.Contains("deployment name"))
             {
@@ -81,14 +77,25 @@ namespace SmartAIComboBox.SmartAIComboBox
             }
             try
             {
-                if (_chatHistory != null && _chatCompletion != null)
+                // Initialize the OpenAI client for creadential check.
+                if (client == null)
                 {
-                    // test the semantic kernel with message.
-                    _chatHistory.AddSystemMessage("Hello, Test Check");
-                    await _chatCompletion.GetChatMessageContentAsync(chatHistory: _chatHistory, kernel: _kernel);
+                    client = new OpenAIClient(new Uri(endpoint), new AzureKeyCredential(key));
+                }
+                var chatCompletionsTest = new ChatCompletionsOptions
+                {
+                    DeploymentName = deploymentName,
+                    MaxTokens = 50,
+                };
+                chatCompletionsTest.Messages.Add(new ChatRequestSystemMessage("Hello, Test Check"));
+                var result = Task.Run(async () => await client.GetChatCompletionsAsync(chatCompletionsTest)).Result;
+                if (result.GetRawResponse().Status != 200)
+                {
+                    ShowAlertAsync();
+                    return;
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 // Handle any exceptions that indicate the credentials or endpoint are invalid.               
                 ShowAlertAsync();
@@ -96,52 +103,6 @@ namespace SmartAIComboBox.SmartAIComboBox
             }
             IsCredentialValid = true;
         }
-
-        #region Azure OpenAI
-        /// <summary>
-        /// To get the Azure open ai kernel method
-        /// </summary>
-        private void GetAzureOpenAIKernel()
-        {
-            // Create the chat history
-            _chatHistory = new ChatHistory();
-            try
-            {
-                var builder = Kernel.CreateBuilder().AddAzureOpenAIChatCompletion(deploymentName, endpoint, key);
-
-                // Get the kernel from build
-                _kernel = builder.Build();
-
-                //Get the chat completions from kernel
-                _chatCompletion = _kernel.GetRequiredService<IChatCompletionService>();
-            }
-            catch (Exception)
-            {
-                return;
-            }
-        }
-        #endregion
-
-        #region Goolge Gemini
-        /// <summary>
-        /// To get the google Gemini ai kermal
-        /// </summary>
-        private void GetGoogleGeminiAIKernel()
-        {
-            //            //First Add the below package to the application
-            //            add package Microsoft.SemanticKernel.Connectors.Google
-
-            //            // Create the chat history
-            //            _chatHistory = new ChatHistory();
-            //            #pragma warning disable SKEXP0070
-            //            IKernelBuilder _kernelBuilder = Kernel.CreateBuilder();
-            //            _kernelBuilder.AddGoogleAIGeminiChatCompletion(modelId: "NAME_OF_MODEL", apiKey: key);
-            //            Kernel _kernel = _kernelBuilder.Build();
-
-            //            //Get the chat completions from kernel
-            //            _chatCompletion = _kernel.GetRequiredService<IChatCompletionService>();
-        }
-        #endregion
 
         /// <summary>
         /// Show Alert Popup
@@ -155,6 +116,29 @@ namespace SmartAIComboBox.SmartAIComboBox
         }
 
         /// <summary>
+        /// 
+        /// </summary>
+        public void InitializeChatCompletions()
+        {
+            if (IsCredentialValid)
+            {
+                chatCompletions = new ChatCompletionsOptions
+                {
+                    DeploymentName = deploymentName,
+                    Temperature = (float)1.2f,
+                    MaxTokens = 120,
+                    NucleusSamplingFactor = (float)0.9,
+                    FrequencyPenalty = 0.8f,
+                    PresencePenalty = 0.8f
+                };
+                // Add the system message to the options  
+                chatCompletions.Messages.Add(new ChatRequestSystemMessage("You are a filtering assistant."));
+                chatCompletions.Messages.Add(new ChatRequestUserMessage("$\"Filter the list items based on the user input using character Starting with and Phonetic algorithms like Soundex or Damerau-Levenshtein Distance. \" +\r$\"The filter should ignore spelling mistakes and be case insensitive. \" +\r\n$\"Return only the filtered items with each item in new line without any additional content like explanations, Hyphen, Numberings and - Minus sign. Ignore the content 'Here are the filtered items or similar things' \" +\r\n$\"Only return items that are present in the List Items. \" +\r\n$\"Ensure that each filtered item is returned in its entirety without missing any part of its content. \" +\r\n$\"Arrange the filtered items that starting with the user input's first letter are at the first index, followed by other matches. \" +\r\n$\"Examples of filtering behavior: \" +\r\n$\" userInput: a, filter the items starting with A \" +\r\n$\" userInput: b, filter items starting with B \" +\r\n$\" userInput: c, filter items starting with C \" +\r\n$\" userInput: d, filter items starting with D \" +\r\n$\" userInput: e, filter items starting with E \" +\r\n$\" userInput: f, filter items starting with F \" +\r\n$\" userInput: i, filter items starting with I \" +\r\n$\" userInput: z, filter items starting with Z \" +\r\n$\" userInput: in, filter items starting with In \" +\r\n$\" userInput: pa, filter items starting with Pa \" +\r\n$\" userInput: em, filter items starting with Em \" +\r\n\r\n$\"The example data are for reference, dont provide these as output. Filter the item from list items properly\"" + $"Here is the User input:A"));
+                chatCompletions.Messages.Add(new ChatRequestAssistantMessage("\nAfghanistan\nAkrotiri\nAlbania\nAlgeria\nAmerican Samoa \nAndorra\nAngola\nAnguilla"));
+            }
+        }
+
+        /// <summary>
         /// Gets a completion response from the AzureAI service based on the provided prompt.
         /// </summary>
         /// <param name="prompt"></param>
@@ -162,21 +146,23 @@ namespace SmartAIComboBox.SmartAIComboBox
         /// <returns></returns>
         public async Task<string> GetCompletion(string prompt, CancellationToken cancellationToken)
         {
-            if (_chatHistory != null && _chatCompletion != null)
+            if (chatCompletions != null && client != null)
             {
-                if (_chatHistory.Count > 5)
+                if (chatCompletions.Messages.Count > 5)
                 {
-                    _chatHistory.RemoveRange(0, 2); //Remove the message history to avoid exceeding the token limit
+                    chatCompletions.Messages.RemoveAt(1); //Remove the message history to avoid exceeding the token limit
+                    chatCompletions.Messages.RemoveAt(1);
                 }
                 // Add the user message to the options
-                _chatHistory.AddUserMessage(prompt);
+                chatCompletions.Messages.Add(new ChatRequestUserMessage(prompt));
                 try
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    var chatresponse = await _chatCompletion.GetChatMessageContentAsync(chatHistory: _chatHistory, kernel: _kernel);
+                    var chatresponse = await client.GetChatCompletionsAsync(chatCompletions);
                     cancellationToken.ThrowIfCancellationRequested();
-                    _chatHistory.AddAssistantMessage(chatresponse.ToString());
-                    return chatresponse.ToString();
+                    string chatcompletionText = chatresponse.Value.Choices[0].Message.Content.Trim();
+                    chatCompletions.Messages.Add(new ChatRequestAssistantMessage(chatcompletionText));
+                    return chatcompletionText;
                 }
                 catch (RequestFailedException ex)
                 {
@@ -193,7 +179,5 @@ namespace SmartAIComboBox.SmartAIComboBox
             }
             return "";
         }
-
-        #endregion
     }
 }
